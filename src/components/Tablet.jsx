@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useWebsocket } from '../context/useWebsocket';
+import { sendRegisterData } from '../services/registerService';
+import CameraCapture from './CameraCapture';
 
 const ENABLE_LOCAL_COUNTDOWN_FALLBACK = import.meta.env.DEV;
 const ENABLE_DEBUG_NEXT_BUTTON = import.meta.env.DEV;
@@ -15,6 +17,7 @@ function Tablet({ lane = 'LEFT' }) {
     cedula: '',
     email: '',
     termsAccepted: false,
+    photoFile: null,
     photoUrl: '',
     combo: ''
   });
@@ -76,15 +79,14 @@ function Tablet({ lane = 'LEFT' }) {
     setStep('photo');
   };
 
-  const handlePhotoUpload = async () => {
-    // Simulación de subida de foto
-    const fakePhotoUrl = '/uploads/img_' + Date.now() + '.jpg';
-    setFormData(prev => ({ ...prev, photoUrl: fakePhotoUrl }));
-    console.log('📸 Foto subida (simulada):', fakePhotoUrl);
-    handleFinishRegistration(fakePhotoUrl);
+  const handlePhotoCapture = async (photoFile) => {
+    // Foto capturada por cámara
+    console.log('📸 Foto capturada:', photoFile.name);
+    setFormData(prev => ({ ...prev, photoFile }));
+    await handleFinishRegistration(null, photoFile);
   };
 
-  const handleFinishRegistration = (photoUrl = formData.photoUrl) => {
+  const handleFinishRegistration = async (photoUrl = formData.photoUrl, photoFile = formData.photoFile) => {
     // Emitir REGISTER_PLAYER con todos los datos
     const playerData = {
       ...formData,
@@ -92,6 +94,24 @@ function Tablet({ lane = 'LEFT' }) {
       lane,
       timestamp: new Date().toISOString()
     };
+
+    try {
+      const registerResponse = await sendRegisterData({
+        userData: {
+          name: formData.name,
+          email: formData.email,
+          player: lane === 'LEFT' ? 1 : 2
+        },
+        termsAccepted: formData.termsAccepted,
+        photoFile
+      });
+
+      console.log('✅ Respuesta /api/registro:', registerResponse);
+    } catch (error) {
+      console.error('❌ Error enviando /api/registro:', error);
+      alert('No se pudo completar el registro. Intenta nuevamente.');
+      return;
+    }
     
     console.log('📋 Registro local para flujo inicial:', playerData);
     setStep('waiting');
@@ -201,20 +221,7 @@ function Tablet({ lane = 'LEFT' }) {
         );
 
       case 'photo':
-        return (
-          <div className="view-container">
-            <h1 className="text-3xl font-bold mb-6">Toma tu Foto</h1>
-            <div className="bg-gray-700 w-full h-64 mb-6 flex items-center justify-center rounded">
-              [CÁMARA FRONTAL]
-            </div>
-            <p className="mb-4 text-sm">
-              (En producción: capturar con cámara real y POST /api/upload-photo)
-            </p>
-            <button onClick={handlePhotoUpload} className="btn-primary">
-              Capturar Foto
-            </button>
-          </div>
-        );
+        return <CameraCapture onCapture={handlePhotoCapture} />;
 
       case 'waiting':
         return (
