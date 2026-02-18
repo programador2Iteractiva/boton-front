@@ -8,7 +8,10 @@ const ENABLE_DEBUG_NEXT_BUTTON = import.meta.env.DEV;
 const STEP_SEQUENCE = ['loop', 'register', 'terms', 'photo', 'waiting', 'countdown', 'racing'];
 
 function Tablet({ lane = 'LEFT' }) {
-  const { isConnected, connectionState } = useWebsocket();
+  // Determinar número de jugador según lane
+  const currentPlayer = lane === 'LEFT' ? 1 : 2;
+  
+  const { isConnected, connectionState, subscribe } = useWebsocket();
   const [step, setStep] = useState('loop');
   
   // Datos del formulario
@@ -22,6 +25,14 @@ function Tablet({ lane = 'LEFT' }) {
     combo: ''
   });
 
+  // Información del jugador recibida del servidor
+  const [playerInfo, setPlayerInfo] = useState({
+    player: null,
+    name: '',
+    photoUrl: '',
+    registered: false
+  });
+
   // Datos de la carrera
   const [countdown, setCountdown] = useState(null);
   const countdownIntervalRef = useRef(null);
@@ -32,6 +43,34 @@ function Tablet({ lane = 'LEFT' }) {
       countdownIntervalRef.current = null;
     }
   };
+
+  // Escuchar eventos del servidor
+  useEffect(() => {
+    const handleServerMessage = (message) => {
+      console.log('📨 Mensaje del servidor:', message);
+
+      // Si es actualización de info del jugador
+      if (message.type === 'update_player_info') {
+        console.log(`🎯 Jugador ${message.player} actualizado`);
+        
+        // Si el mensaje es para nuestro jugador, guardar la información
+        if (message.player === currentPlayer) {
+          console.log(`✅ Actualizando info del jugador ${currentPlayer}:`, message);
+          setPlayerInfo({
+            player: message.player,
+            name: message.name || formData.name,
+            photoUrl: message.photoUrl,
+            registered: true
+          });
+        }
+      }
+    };
+
+    // Suscribirse a mensajes del socket
+    const unsubscribe = subscribe(handleServerMessage);
+    
+    return unsubscribe;
+  }, [currentPlayer, formData.name, subscribe]);
 
   const startCountdown = (seconds) => {
     clearCountdownInterval();
@@ -227,10 +266,34 @@ function Tablet({ lane = 'LEFT' }) {
         return (
           <div className="view-container">
             <h1 className="text-5xl font-bold mb-8">Espera</h1>
-            <p className="text-2xl mb-8">Registro completado. Presiona para iniciar carrera.</p>
+            
+            {/* Mostrar foto del jugador si está disponible */}
+            {playerInfo.registered && playerInfo.photoUrl && (
+              <div className="mb-8">
+                <img 
+                  src={playerInfo.photoUrl} 
+                  alt={`Foto de ${playerInfo.name}`}
+                  className="w-64 h-64 object-cover rounded-lg border-4 border-yellow-400 mx-auto"
+                />
+                <p className="text-center mt-4 text-xl text-gray-300">
+                  ✅ {playerInfo.name || 'Jugador'} registrado
+                </p>
+              </div>
+            )}
+            
+            <p className="text-2xl mb-8">
+              {playerInfo.registered 
+                ? 'Foto recibida. Presiona para iniciar carrera.'
+                : 'Procesando...'}
+            </p>
             <button 
               onClick={handleStartRace}
-              className="bg-green-500 text-white text-4xl font-bold py-8 px-16 rounded-lg hover:bg-green-600"
+              disabled={!playerInfo.registered}
+              className={`text-4xl font-bold py-8 px-16 rounded-lg ${
+                playerInfo.registered
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
+              }`}
             >
               ¡INICIAR CARRERA!
             </button>

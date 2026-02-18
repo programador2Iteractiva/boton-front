@@ -9,7 +9,7 @@ function RaceTimer({ time }) {
 }
 
 function Display() {
-  const { isConnected, connectionState, activeClients } = useWebsocket();
+  const { isConnected, connectionState, activeClients, subscribe } = useWebsocket();
   // Estados para carril izquierdo y derecho
   const [leftPlayer, setLeftPlayer] = useState({
     state: 'idle', // idle, lobby, countdown, racing, result
@@ -52,6 +52,34 @@ function Display() {
     setRaceStartTime(null);
     setCurrentTime(0);
   };
+
+  // Escuchar eventos del servidor
+  useEffect(() => {
+    const handleServerMessage = (message) => {
+      console.log('📨 Display recibió:', message);
+
+      // Si es actualización de info del jugador
+      if (message.type === 'update_player_info') {
+        console.log(`🎯 Actualizando jugador ${message.player}:`, message);
+        
+        // Determinar si es jugador LEFT (1) o RIGHT (2)
+        const lane = message.player === 1 ? 'LEFT' : 'RIGHT';
+        const setter = message.player === 1 ? setLeftPlayer : setRightPlayer;
+        
+        setter(prev => ({
+          ...prev,
+          name: message.name || prev.name,
+          photo: message.photoUrl || prev.photo,
+          state: prev.state === 'idle' ? 'lobby' : prev.state
+        }));
+      }
+    };
+
+    // Suscribirse a mensajes del socket
+    const unsubscribe = subscribe(handleServerMessage);
+    
+    return unsubscribe;
+  }, [subscribe]);
 
   // Actualizar cronómetro durante la carrera
   useEffect(() => {
