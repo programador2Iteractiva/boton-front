@@ -142,7 +142,8 @@ function Tablet({ lane = 'LEFT' }) {
           player: lane === 'LEFT' ? 1 : 2
         },
         termsAccepted: formData.termsAccepted,
-        photoFile
+        photoFile,
+        lane: lane
       });
 
       console.log('✅ Respuesta /api/registro:', registerResponse);

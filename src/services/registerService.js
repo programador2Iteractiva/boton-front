@@ -1,6 +1,6 @@
 const REGISTER_URL = 'http://localhost:8080/api/registro';
 
-export async function sendRegisterData({ userData, termsAccepted, photoFile }) {
+export async function sendRegisterData({ userData, termsAccepted, photoFile, lane }) {
   const formData = new FormData();
   
   // Campo userData como JSON string (opcional según docs)
@@ -14,6 +14,11 @@ export async function sendRegisterData({ userData, termsAccepted, photoFile }) {
   // Campo "foto" (exactamente así, requerido según docs)
   if (photoFile) {
     formData.append('foto', photoFile);
+  }
+
+  // Agregar línea/carril al que pertenece el registro (opcional)
+  if (lane) {
+    formData.append('lane', lane);
   }
 
   const response = await fetch(REGISTER_URL, {

@@ -154,7 +154,7 @@ const CameraCapture = ({ onCapture, onCancel }) => {
           <video
             ref={videoRef}
             autoPlay
-            playsInline
+            playsInlane
             muted
             className="w-full h-full object-cover transform scale-x-[-1]"
           />
