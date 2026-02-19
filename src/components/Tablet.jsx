@@ -33,9 +33,14 @@ function Tablet({ lane = 'LEFT' }) {
     registered: false
   });
 
+  // Indicador de espera cuando este tablet se registró primero
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+
   // Datos de la carrera
   const [countdown, setCountdown] = useState(null);
   const countdownIntervalRef = useRef(null);
+  const stepRef = useRef('loop');
+  const countdownRef = useRef(null);
 
   const clearCountdownInterval = () => {
     if (countdownIntervalRef.current) {
@@ -52,7 +57,7 @@ function Tablet({ lane = 'LEFT' }) {
       // Si es actualización de info del jugador
       if (message.type === 'update_player_info') {
         console.log(`🎯 Jugador ${message.player} actualizado`);
-        
+
         // Si el mensaje es para nuestro jugador, guardar la información
         if (message.player === currentPlayer) {
           console.log(`✅ Actualizando info del jugador ${currentPlayer}:`, message);
@@ -64,13 +69,48 @@ function Tablet({ lane = 'LEFT' }) {
           });
         }
       }
+
+      // Si el servidor indica que debemos esperar al oponente
+      if (message.type === 'waiting_for_opponent') {
+        // Solo procesar si el mensaje explícitamente indica este jugador
+        if (message.player === currentPlayer) {
+          // Si ya estamos en conteo o en carrera, ignorar este evento (leer desde refs)
+          if (stepRef.current === 'countdown' || stepRef.current === 'racing' || countdownRef.current) {
+            console.log('⏳ Ignorando waiting_for_opponent: ya en conteo o carrera', { step: stepRef.current, countdown: countdownRef.current });
+          } else {
+            console.log('⏳ Recibido waiting_for_opponent para este jugador');
+            setWaitingForOpponent(true);
+            setStep('waiting');
+            setPlayerInfo(prev => ({ ...prev, registered: true }));
+          }
+        } else {
+          console.log('⏳ waiting_for_opponent ignorado (no para este jugador)', message);
+        }
+      }
+
+      // Si el servidor indica iniciar el conteo para ambos
+      if (message.type === 'start_countdown') {
+        console.log('⏱️ Recibido start_countdown', message);
+        setWaitingForOpponent(false);
+        const seconds = message.seconds || 3;
+        startCountdown(seconds);
+      }
     };
 
-    // Suscribirse a mensajes del socket
+    // Suscribirse a mensajes del socket (no re-suscribir por step/countdown para evitar perder eventos)
     const unsubscribe = subscribe(handleServerMessage);
-    
+
     return unsubscribe;
   }, [currentPlayer, formData.name, subscribe]);
+
+  // Mantener refs sincronizados con el estado actual para que el handler pueda leer valores actualizados
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  useEffect(() => {
+    countdownRef.current = countdown;
+  }, [countdown]);
 
   const startCountdown = (seconds) => {
     clearCountdownInterval();
@@ -147,6 +187,8 @@ function Tablet({ lane = 'LEFT' }) {
       });
 
       console.log('✅ Respuesta /api/registro:', registerResponse);
+      // Marcar localmente como registrado (el servidor enviará los eventos de socket)
+      setPlayerInfo(prev => ({ ...prev, registered: true, photoUrl: photoUrl || prev.photoUrl, name: formData.name }));
     } catch (error) {
       console.error('❌ Error enviando /api/registro:', error);
       alert('No se pudo completar el registro. Intenta nuevamente.');
@@ -154,7 +196,14 @@ function Tablet({ lane = 'LEFT' }) {
     }
     
     console.log('📋 Registro local para flujo inicial:', playerData);
-    setStep('waiting');
+    // Solo cambiar a 'waiting' si no se ha iniciado ya un conteo (usar refs si están disponibles)
+    const currentStep = stepRef.current || step;
+    const currentCountdown = countdownRef.current || countdown;
+    if (currentStep === 'countdown' || currentStep === 'racing' || currentCountdown) {
+      console.log('⚠️ Conteo ya iniciado, no cambiar a waiting', { step: currentStep, countdown: currentCountdown });
+    } else {
+      setStep('waiting');
+    }
   };
 
   const handleStartRace = () => {
@@ -266,38 +315,27 @@ function Tablet({ lane = 'LEFT' }) {
       case 'waiting':
         return (
           <div className="view-container">
-            <h1 className="text-5xl font-bold mb-8">Espera</h1>
-            
-            {/* Mostrar foto del jugador si está disponible */}
-            {playerInfo.registered && playerInfo.photoUrl && (
-              <div className="mb-8">
-                <img 
-                  src={playerInfo.photoUrl} 
-                  alt={`Foto de ${playerInfo.name}`}
-                  className="w-64 h-64 object-cover rounded-lg border-4 border-yellow-400 mx-auto"
-                />
-                <p className="text-center mt-4 text-xl text-gray-300">
-                  ✅ {playerInfo.name || 'Jugador'} registrado
-                </p>
-              </div>
-            )}
-            
-            <p className="text-2xl mb-8">
-              {playerInfo.registered 
-                ? 'Foto recibida. Presiona para iniciar carrera.'
-                : 'Procesando...'}
-            </p>
-            <button 
-              onClick={handleStartRace}
-              disabled={!playerInfo.registered}
-              className={`text-4xl font-bold py-8 px-16 rounded-lg ${
-                playerInfo.registered
-                  ? 'bg-green-500 text-white hover:bg-green-600'
-                  : 'bg-gray-500 text-gray-300 cursor-not-allowed'
-              }`}
-            >
-              ¡INICIAR CARRERA!
-            </button>
+              <h1 className="text-5xl font-bold mb-8">Espera</h1>
+
+              {/* Mostrar foto del jugador si está disponible */}
+              {playerInfo.registered && playerInfo.photoUrl && (
+                <div className="mb-8">
+                  <img 
+                    src={playerInfo.photoUrl} 
+                    alt={`Foto de ${playerInfo.name}`}
+                    className="w-64 h-64 object-cover rounded-lg border-4 border-yellow-400 mx-auto"
+                  />
+                  <p className="text-center mt-4 text-xl text-gray-300">
+                    ✅ {playerInfo.name || 'Jugador'} registrado
+                  </p>
+                </div>
+              )}
+
+              {/* Mostrar siempre la pantalla de espera del oponente (no interactiva) */}
+              <>
+                <p className="text-2xl mb-8">Esperando al oponente...</p>
+                <div className="loader w-32 h-32 mx-auto mb-4" />
+              </>
           </div>
         );
 
