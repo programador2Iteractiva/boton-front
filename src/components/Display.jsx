@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWebsocket } from '../context/useWebsocket';
 
 const ENABLE_DISPLAY_DEBUG = import.meta.env.DEV;
@@ -31,6 +31,7 @@ function Display() {
 
   const [raceStartTime, setRaceStartTime] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const countdownTimerRef = useRef(null);
 
   const resetDisplayState = () => {
     setLeftPlayer({
@@ -73,6 +74,39 @@ function Display() {
           state: prev.state === 'idle' ? 'lobby' : prev.state
         }));
       }
+
+      // Si el servidor inicia el conteo para la pantalla
+      if (message.type === 'start_countdown') {
+        console.log('⏱️ Display: start_countdown recibido', message);
+        const seconds = message.seconds || 3;
+
+        // Cancelar cualquier timer previo
+        if (countdownTimerRef.current) {
+          clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+        }
+
+        // Poner ambos jugadores en estado countdown con valor inicial
+        setLeftPlayer(prev => ({ ...prev, state: 'countdown', countdownValue: seconds }));
+        setRightPlayer(prev => ({ ...prev, state: 'countdown', countdownValue: seconds }));
+
+        // Iniciar temporizador que decrementa cada segundo
+        let remaining = seconds;
+        countdownTimerRef.current = setInterval(() => {
+          remaining -= 1;
+          setLeftPlayer(prev => ({ ...prev, countdownValue: remaining }));
+          setRightPlayer(prev => ({ ...prev, countdownValue: remaining }));
+
+          if (remaining <= 0) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+            // Pasar a racing y arrancar el cronómetro
+            setLeftPlayer(prev => ({ ...prev, state: 'racing', countdownValue: null }));
+            setRightPlayer(prev => ({ ...prev, state: 'racing', countdownValue: null }));
+            setRaceStartTime(Date.now());
+          }
+        }, 1000);
+      }
     };
 
     // Suscribirse a mensajes del socket
@@ -92,6 +126,16 @@ function Display() {
 
     return () => clearInterval(interval);
   }, [raceStartTime]);
+
+  // Limpiar timer de countdown al desmontar
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Helper para actualizar estado de un carril
   const updatePlayerState = (lane, updates) => {
@@ -219,7 +263,7 @@ function Display() {
       case 'countdown':
         return (
           <div className="lane-countdown">
-            <div className="photo-placeholder opacity-50">
+            <div className="photo-placeholder">
               {player.photo ? (
                 <img src={player.photo} alt={player.name} className="w-full h-full object-cover" />
               ) : (
@@ -236,9 +280,17 @@ function Display() {
 
       case 'racing':
         return (
-          <div className="lane-racing">
+          <div className="lane-racing flex flex-col items-center">
+            <div className="photo-placeholder w-40 h-40 mb-4 rounded-full overflow-hidden border-4 border-slate-700">
+              {player.photo ? (
+                <img src={player.photo} alt={player.name} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-6xl">👤</div>
+              )}
+            </div>
             <RaceTimer time={currentTime} />
             <p className="text-2xl mt-4">🏃‍♂️ CORRIENDO...</p>
+            <p className="text-xl mt-2">{player.name}</p>
           </div>
         );
 
