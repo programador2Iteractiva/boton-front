@@ -18,6 +18,16 @@ const CameraCapture = ({ onCapture, onCancel }) => {
 
     const startCamera = async () => {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setError('Este navegador no soporta acceso a cámara.');
+          return;
+        }
+
+        if (!window.isSecureContext) {
+          setError('La cámara requiere HTTPS (o localhost). Abre esta app en una URL segura.');
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: 'user',
@@ -30,11 +40,25 @@ const CameraCapture = ({ onCapture, onCancel }) => {
         currentStream = stream;
 
         if (videoRef.current) {
+          videoRef.current.setAttribute('playsinline', 'true');
           videoRef.current.srcObject = stream;
+          await videoRef.current.play();
         }
       } catch (err) {
         console.error("Error acceso cámara:", err);
-        setError("No se pudo acceder a la cámara. Revisa permisos o HTTPS.");
+        if (err?.name === 'NotAllowedError') {
+          setError('Permiso de cámara denegado. Habilítalo en la configuración de Chrome.');
+          return;
+        }
+        if (err?.name === 'NotFoundError') {
+          setError('No se encontró una cámara disponible en este dispositivo.');
+          return;
+        }
+        if (err?.name === 'NotReadableError') {
+          setError('La cámara está siendo usada por otra app. Cierra la otra app e intenta de nuevo.');
+          return;
+        }
+        setError('No se pudo acceder a la cámara. Revisa permisos y HTTPS.');
       }
     };
 
@@ -61,11 +85,14 @@ const CameraCapture = ({ onCapture, onCancel }) => {
     canvas.height = video.videoHeight;
 
     const ctx = canvas.getContext('2d');
+    if (!ctx) return;
     
     // Espejo
+    ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
+    ctx.restore();
 
     canvas.toBlob((blob) => {
       if (!blob) return;
@@ -76,6 +103,9 @@ const CameraCapture = ({ onCapture, onCancel }) => {
   };
 
   const retake = () => {
+    if (photo?.previewUrl) {
+      URL.revokeObjectURL(photo.previewUrl);
+    }
     setPhoto(null);
     setError(null);
   };
@@ -95,10 +125,19 @@ const CameraCapture = ({ onCapture, onCancel }) => {
     ctx.font = '30px Arial';
     ctx.fillText('FOTO DE PRUEBA', 200, 240);
     canvas.toBlob(blob => {
+        if (!blob) return;
         const file = new File([blob], "debug_photo.jpg", { type: "image/jpeg" });
         setPhoto({ file, previewUrl: URL.createObjectURL(blob) });
     });
   };
+
+  useEffect(() => {
+    return () => {
+      if (photo?.previewUrl) {
+        URL.revokeObjectURL(photo.previewUrl);
+      }
+    };
+  }, [photo]);
 
   // --- RENDERIZADO ---
 
@@ -154,7 +193,7 @@ const CameraCapture = ({ onCapture, onCancel }) => {
           <video
             ref={videoRef}
             autoPlay
-            playsInlane
+            playsInline
             muted
             className="w-full h-full object-cover transform scale-x-[-1]"
           />
