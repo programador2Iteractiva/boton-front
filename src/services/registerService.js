@@ -1,4 +1,4 @@
-const REGISTER_URL = 'https://9.0.0.10:8080/api/registro';
+const REGISTER_URL = 'http://9.0.0.10:443/api/registro';
 
 export async function sendRegisterData({ userData, termsAccepted, photoFile, lane }) {
   console.log('📤 Enviando registro a:', REGISTER_URL);

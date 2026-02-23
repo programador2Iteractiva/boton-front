@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:deploy": "vite build --outDir \"C:\\Users\\Interactiva\\Documents\\Proyectos\\mcdonals\\dist\" --emptyOutDir",
     "lint": "eslint .",
     "preview": "vite preview"
   },

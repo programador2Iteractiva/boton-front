@@ -23,7 +23,7 @@ export function WebsocketProvider({ children, clientType, name }) {
   const subscribersRef = useRef(new Set());
 
   const wsUrl = useMemo(
-    () => import.meta.env.VITE_WS_URL || 'ws://localhost:3000',
+    () => import.meta.env.VITE_WS_URL || 'ws://9.0.0.10:1337',
     []
   );
 
