@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+// IMPORTAMOS LA IMAGEN DEL MARCO
+import frameSrc from '../assets/marco.png';
 
 const CameraCapture = ({ onCapture, onCancel }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const frameRef = useRef(null); // Ref para el marco oculto
   
   // --- ESTADOS ---
   const [photo, setPhoto] = useState(null);
@@ -15,16 +18,17 @@ const CameraCapture = ({ onCapture, onCancel }) => {
   // 1. INICIAR CÁMARA
   useEffect(() => {
     let currentStream = null;
+    let isMounted = true; // Controla si el componente sigue en pantalla
 
     const startCamera = async () => {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          setError('Este navegador no soporta acceso a cámara.');
+          if (isMounted) setError('Este navegador no soporta acceso a cámara.');
           return;
         }
 
         if (!window.isSecureContext) {
-          setError('La cámara requiere HTTPS (o localhost). Abre esta app en una URL segura.');
+          if (isMounted) setError('La cámara requiere HTTPS (o localhost). Abre esta app en una URL segura.');
           return;
         }
 
@@ -37,14 +41,30 @@ const CameraCapture = ({ onCapture, onCancel }) => {
           audio: false,
         });
 
+        // Si el componente se desmontó mientras el usuario daba permisos, detenemos la cámara
+        if (!isMounted) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
         currentStream = stream;
 
         if (videoRef.current) {
           videoRef.current.setAttribute('playsinline', 'true');
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          
+          // Atrapar el AbortError que ocurre si el componente se desmonta rápido
+          try {
+            await videoRef.current.play();
+          } catch (playError) {
+            if (playError.name !== 'AbortError') {
+              console.error('Error inesperado al reproducir video:', playError);
+            }
+          }
         }
       } catch (err) {
+        if (!isMounted) return; // No actualizar estado si ya se desmontó
+        
         console.error("Error acceso cámara:", err);
         if (err?.name === 'NotAllowedError') {
           setError('Permiso de cámara denegado. Habilítalo en la configuración de Chrome.');
@@ -64,9 +84,14 @@ const CameraCapture = ({ onCapture, onCancel }) => {
 
     startCamera();
 
+    // Limpieza al desmontar
     return () => {
+      isMounted = false;
       if (currentStream) {
         currentStream.getTracks().forEach((track) => track.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
       }
     };
   }, []);
@@ -87,13 +112,19 @@ const CameraCapture = ({ onCapture, onCancel }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Espejo
+    // Paso A: Dibujar el video con efecto espejo
     ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
     ctx.restore();
 
+    // Paso B: Dibujar el marco encima (SIN efecto espejo, para que textos/logos se lean bien)
+    if (frameRef.current) {
+      ctx.drawImage(frameRef.current, 0, 0, canvas.width, canvas.height);
+    }
+
+    // Paso C: Generar la imagen unificada
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `race_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
@@ -155,12 +186,9 @@ const CameraCapture = ({ onCapture, onCancel }) => {
   }
 
   return (
-    // ⚠️ CAMBIO PRINCIPAL AQUÍ:
-    // 1. Quitamos 'fixed inset-0 z-50'
-    // 2. Ponemos 'w-full h-full relative' para que llene el espacio que le deja tu status-bar
     <div className="w-full h-full relative flex flex-col items-center justify-center bg-slate-900 p-2 overflow-hidden">
       
-      {/* 🛠️ DEBUGGER (Ahora posicionado relativo al componente, no a la pantalla) */}
+      {/* 🛠️ DEBUGGER */}
       {DEBUG_MODE && (
         <div className="absolute top-2 left-2 z-40 bg-black/80 p-2 rounded border border-yellow-500 text-xs text-yellow-500 flex flex-col gap-2">
             <strong className="text-white border-b border-gray-600 pb-1">🛠️ DEBUG</strong>
@@ -171,7 +199,7 @@ const CameraCapture = ({ onCapture, onCancel }) => {
         </div>
       )}
 
-      {/* CABECERA (Más compacta para que quepa bien debajo de tu status bar) */}
+      {/* CABECERA */}
       <div className="w-full max-w-2xl flex justify-between items-center mb-2">
         <h2 className="text-white text-lg font-bold tracking-wider">
           {photo ? '¿CONFIRMAR?' : 'REGISTRO'}
@@ -186,32 +214,48 @@ const CameraCapture = ({ onCapture, onCancel }) => {
         )}
       </div>
 
-      {/* VISOR (Usamos flex-1 para que ocupe el máximo espacio posible verticalmente) */}
+      {/* VISOR */}
       <div className="relative w-full max-w-2xl aspect-video bg-black rounded-xl overflow-hidden shadow-lg border-2 border-slate-700">
         
+        {/* Imagen Oculta del Marco (para usarla en el Canvas) */}
+        <img 
+          ref={frameRef} 
+          src={frameSrc} 
+          alt="Marco oculto" 
+          className="hidden" 
+          crossOrigin="anonymous" 
+        />
+
         {!photo && (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover transform scale-x-[-1]"
-          />
+          <>
+            {/* Video en vivo (Se agrego absolute inset-0 para que coexista con el overlay) */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]"
+            />
+            
+            {/* Overlay visual del marco para que el usuario se acomode */}
+            <img 
+              src={frameSrc} 
+              alt="Marco" 
+              className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10" 
+            />
+          </>
         )}
 
         {photo && (
           <img
             src={photo.previewUrl}
             alt="Preview"
-            className="w-full h-full object-cover transform scale-x-[-1]"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         )}
 
         {flash && <div className="absolute inset-0 bg-white z-20 transition-opacity duration-150" />}
         
-        {!photo && (
-          <div className="absolute inset-0 border-2 border-white/20 m-4 rounded-full opacity-30 pointer-events-none" />
-        )}
       </div>
 
       {/* CONTROLES */}
