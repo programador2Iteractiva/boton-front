@@ -37,6 +37,10 @@ function Display() {
   const countdownTimerRef = useRef(null);
   const raceStartTimeRef = useRef(null); // Guarda el tiempo exacto de inicio sin depender de renders de React
   const hasWinnerRef = useRef(false);    // Bloquea al ganador inmediatamente llega el primero
+  
+  // NUEVO: Referencias para saber si un carril ya detuvo su tiempo y bloquear clics extra
+  const leftFinishedRef = useRef(false);
+  const rightFinishedRef = useRef(false);
 
   const resetDisplayState = () => {
     setLeftPlayer({
@@ -59,6 +63,8 @@ function Display() {
     setCurrentTime(0);
     hasWinnerRef.current = false;
     raceStartTimeRef.current = null;
+    leftFinishedRef.current = false;
+    rightFinishedRef.current = false;
   };
 
   // Escuchar eventos del servidor
@@ -87,8 +93,10 @@ function Display() {
         console.log('⏱️ Display: start_countdown recibido', message);
         const seconds = message.seconds || 3;
 
-        // Reiniciar el ganador al iniciar una nueva carrera
+        // Reiniciar los bloqueos al iniciar una nueva carrera
         hasWinnerRef.current = false; 
+        leftFinishedRef.current = false;
+        rightFinishedRef.current = false;
 
         // Cancelar cualquier timer previo
         if (countdownTimerRef.current) {
@@ -126,13 +134,21 @@ function Display() {
       if (message.type === 'stop_timer') {
         console.log('🛑 Display: stop_timer recibido', message);
 
+        // NUEVO: Si este carril ya terminó, ignoramos eventos extra (evita sobreescribir el tiempo)
+        if (message.lane === 'LEFT' && leftFinishedRef.current) return;
+        if (message.lane === 'RIGHT' && rightFinishedRef.current) return;
+
+        // Marcar el carril como terminado para bloquear futuros clics en esta misma carrera
+        if (message.lane === 'LEFT') leftFinishedRef.current = true;
+        if (message.lane === 'RIGHT') rightFinishedRef.current = true;
+
         // Calcula el tiempo total
         const finalTime = raceStartTimeRef.current ? (Date.now() - raceStartTimeRef.current) : 0;
         
         // Verifica si ya hay un ganador. Si no lo hay, este jugador gana
         const isWinner = !hasWinnerRef.current;
         
-        // Bloquear para el próximo que llegue
+        // Bloquear el puesto de ganador para el próximo que llegue
         if (isWinner) {
           hasWinnerRef.current = true;
         }
@@ -228,6 +244,8 @@ function Display() {
       setRaceStartTime(now);
       raceStartTimeRef.current = now;
       hasWinnerRef.current = false;
+      leftFinishedRef.current = false;
+      rightFinishedRef.current = false;
     }
 
     if (targetState === 'result') {
