@@ -10,6 +10,7 @@ function RaceTimer({ time }) {
 
 function Display() {
   const { isConnected, connectionState, activeClients, subscribe } = useWebsocket();
+  
   // Estados para carril izquierdo y derecho
   const [leftPlayer, setLeftPlayer] = useState({
     state: 'idle', // idle, lobby, countdown, racing, result
@@ -31,7 +32,11 @@ function Display() {
 
   const [raceStartTime, setRaceStartTime] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
+  
+  // Referencias para manejo de temporizadores y ganadores
   const countdownTimerRef = useRef(null);
+  const raceStartTimeRef = useRef(null); // Guarda el tiempo exacto de inicio sin depender de renders de React
+  const hasWinnerRef = useRef(false);    // Bloquea al ganador inmediatamente llega el primero
 
   const resetDisplayState = () => {
     setLeftPlayer({
@@ -52,6 +57,8 @@ function Display() {
     });
     setRaceStartTime(null);
     setCurrentTime(0);
+    hasWinnerRef.current = false;
+    raceStartTimeRef.current = null;
   };
 
   // Escuchar eventos del servidor
@@ -80,6 +87,9 @@ function Display() {
         console.log('⏱️ Display: start_countdown recibido', message);
         const seconds = message.seconds || 3;
 
+        // Reiniciar el ganador al iniciar una nueva carrera
+        hasWinnerRef.current = false; 
+
         // Cancelar cualquier timer previo
         if (countdownTimerRef.current) {
           clearInterval(countdownTimerRef.current);
@@ -100,12 +110,48 @@ function Display() {
           if (remaining <= 0) {
             clearInterval(countdownTimerRef.current);
             countdownTimerRef.current = null;
+            
             // Pasar a racing y arrancar el cronómetro
             setLeftPlayer(prev => ({ ...prev, state: 'racing', countdownValue: null }));
             setRightPlayer(prev => ({ ...prev, state: 'racing', countdownValue: null }));
-            setRaceStartTime(Date.now());
+            
+            const now = Date.now();
+            setRaceStartTime(now);
+            raceStartTimeRef.current = now; // Guardar el momento exacto de inicio en el Ref
           }
         }, 1000);
+      }
+
+      // Si se recibe el evento de detención del cronómetro
+      if (message.type === 'stop_timer') {
+        console.log('🛑 Display: stop_timer recibido', message);
+
+        // Calcula el tiempo total
+        const finalTime = raceStartTimeRef.current ? (Date.now() - raceStartTimeRef.current) : 0;
+        
+        // Verifica si ya hay un ganador. Si no lo hay, este jugador gana
+        const isWinner = !hasWinnerRef.current;
+        
+        // Bloquear para el próximo que llegue
+        if (isWinner) {
+          hasWinnerRef.current = true;
+        }
+
+        if (message.lane === 'LEFT') {
+          setLeftPlayer(prev => ({
+            ...prev,
+            state: 'result',
+            time: finalTime,
+            winner: isWinner
+          }));
+        } else if (message.lane === 'RIGHT') {
+          setRightPlayer(prev => ({
+            ...prev,
+            state: 'result',
+            time: finalTime,
+            winner: isWinner
+          }));
+        }
       }
     };
 
@@ -115,7 +161,7 @@ function Display() {
     return unsubscribe;
   }, [subscribe]);
 
-  // Actualizar cronómetro durante la carrera
+  // Actualizar cronómetro general durante la carrera para la pantalla
   useEffect(() => {
     if (!raceStartTime) return;
 
@@ -177,7 +223,11 @@ function Display() {
       updates.countdownValue = null;
       updates.winner = false;
       updates.time = 0;
-      setRaceStartTime(Date.now());
+      
+      const now = Date.now();
+      setRaceStartTime(now);
+      raceStartTimeRef.current = now;
+      hasWinnerRef.current = false;
     }
 
     if (targetState === 'result') {
