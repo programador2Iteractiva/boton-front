@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-// IMPORTAMOS LA IMAGEN DEL MARCO
-import frameSrc from '../assets/marco.png';
 
 const CameraCapture = ({ onCapture, onCancel }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const frameRef = useRef(null); // Ref para el marco oculto
   
   // --- ESTADOS ---
   const [photo, setPhoto] = useState(null);
@@ -119,12 +116,7 @@ const CameraCapture = ({ onCapture, onCancel }) => {
     ctx.drawImage(video, 0, 0);
     ctx.restore();
 
-    // Paso B: Dibujar el marco encima (SIN efecto espejo, para que textos/logos se lean bien)
-    if (frameRef.current) {
-      ctx.drawImage(frameRef.current, 0, 0, canvas.width, canvas.height);
-    }
-
-    // Paso C: Generar la imagen unificada
+    // Paso B: Generar la imagen unificada sin marco
     canvas.toBlob((blob) => {
       if (!blob) return;
       const file = new File([blob], `race_photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
@@ -217,18 +209,9 @@ const CameraCapture = ({ onCapture, onCancel }) => {
       {/* VISOR */}
       <div className="relative w-full max-w-2xl aspect-video bg-black rounded-xl overflow-hidden shadow-lg border-2 border-slate-700">
         
-        {/* Imagen Oculta del Marco (para usarla en el Canvas) */}
-        <img 
-          ref={frameRef} 
-          src={frameSrc} 
-          alt="Marco oculto" 
-          className="hidden" 
-          crossOrigin="anonymous" 
-        />
-
         {!photo && (
           <>
-            {/* Video en vivo (Se agrego absolute inset-0 para que coexista con el overlay) */}
+            {/* Video en vivo normal */}
             <video
               ref={videoRef}
               autoPlay
@@ -236,13 +219,8 @@ const CameraCapture = ({ onCapture, onCancel }) => {
               muted
               className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]"
             />
-            
-            {/* Overlay visual del marco para que el usuario se acomode */}
-            <img 
-              src={frameSrc} 
-              alt="Marco" 
-              className="absolute inset-0 w-full h-full object-cover pointer-events-none z-10" 
-            />
+            {/* Guía visual opcional (óvalo) */}
+            <div className="absolute inset-0 border-2 border-white/20 m-4 rounded-full opacity-30 pointer-events-none" />
           </>
         )}
 
@@ -250,7 +228,8 @@ const CameraCapture = ({ onCapture, onCancel }) => {
           <img
             src={photo.previewUrl}
             alt="Preview"
-            className="absolute inset-0 w-full h-full object-cover"
+            // Reincorporamos el transform para que la preview coincida con la cámara original
+            className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]"
           />
         )}
 
